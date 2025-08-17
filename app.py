@@ -1,26 +1,34 @@
-import gradio as gr
+from flask import Flask, request, render_template, send_file
 from ultralytics import YOLO
 import cv2
+import numpy as np
+import io
+from PIL import Image
+import os
 
-# Load your trained YOLOv8 model
-model = YOLO("best.pt")  # replace with correct path if needed
+app = Flask(__name__)
 
-def predict(image):
-    # Run YOLO prediction
-    results = model(image)
-    
-    # Annotated image with bounding boxes
-    annotated_frame = results[0].plot()
-    return annotated_frame
+# Load YOLO model
+model = YOLO("yolov8n.pt")  # change to best.pt if that’s your trained weights
 
-# Gradio interface
-demo = gr.Interface(
-    fn=predict,
-    inputs=gr.Image(type="numpy", label="Upload an image"),
-    outputs=gr.Image(type="numpy", label="Detection Result"),
-    title="🍓🍋 Strawberry vs Lemon Detector",
-    description="Upload an image and the YOLOv8 model will detect strawberries and lemons."
-)
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        file = request.files["image"]
+        img = Image.open(file.stream).convert("RGB")
+        img = np.array(img)
+
+        results = model(img)
+        annotated = results[0].plot()
+
+        # Encode image to return to browser
+        _, img_encoded = cv2.imencode(".jpg", annotated)
+        return send_file(
+            io.BytesIO(img_encoded.tobytes()),
+            mimetype="image/jpeg"
+        )
+    return render_template("index.html")
 
 if __name__ == "__main__":
-    demo.launch()
+    port = int(os.environ.get("PORT", 7860))  # Hugging Face provides PORT
+    app.run(host="0.0.0.0", port=port)
